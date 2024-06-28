@@ -6,13 +6,14 @@ const data = JSON.parse(readFileSync('./data/colllist.json'));
 // Create a Pagefind search index to work with
 const { index } = await pagefind.createIndex();
 
-for(let item of data.items.toSorted((a, b) => {
+data.items.sort((a, b) => {
   const valueA = a.label.toUpperCase();
   const valueB = b.label.toUpperCase();
   if ( valueA < valueB ) { return -1 ; }
   if ( valueA > valueB ) { return 1; }
   return 0;
-})) {
+})
+for(let item of data.items) {
   let content = [`<html lang="en"><head>`];
   content.push(`<meta data-pagefind-meta="collid:${item.collid}" />`)
   content.push(`<title>${item.label}</title>`);
