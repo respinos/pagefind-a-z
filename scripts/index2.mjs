@@ -1,7 +1,7 @@
 import * as pagefind from "pagefind";
 import {readFileSync} from 'node:fs';
 
-const data = JSON.parse(readFileSync('./data/colllist.json'));
+const data = JSON.parse(readFileSync('./public/data/colllist.json'));
 
 // Create a Pagefind search index to work with
 const { index } = await pagefind.createIndex();
