@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Searching A-Zed</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+
+  <style>
+    html, body {
+      height: 100%;
+    }
+
+    dd {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+  </style>
+
+  <style>
+    .collection { display: none; }
+  </style>
+
+  <style id="filter-rules">
+    .collection { display: list-item; }
+  </style>
+</head>
+<body>
+
+  <div class="container h-100 p-3">
+    <div class="row h-100">
+      <div class="col h-100 bg-dark text-bg-dark overflow-y-auto" id="colllist">
+        <ul></ul>
+      </div>
+      <div class="col h-100 overflow-y-auto" id="search">
+        <div class="row g-3 align-items-center">
+          <div class="col-auto">
+            <label for="q" class="col-form-label">Find collections</label>
+          </div>
+          <div class="col">
+            <input type="search" id="q" class="form-control">
+          </div>
+        </div>
+        <div class="row mt-3">
+          <dl id="current-filters"></dl>
+        </div>
+        <div class="row mt-3">
+          <dl id="available-filters"></dl>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+
+    const response = await fetch('./data/colllist.json');
+    const data = await response.json();
+
+    const pagefind = await import("/pagefind/pagefind.js");
+    pagefind.init();
+
+    const filters = await pagefind.filters();
+
+    window.pagefind = pagefind;
+
+    const colllistEl = document.querySelector('#colllist ul');
+    data.items.forEach((item) => {
+      const liEl = document.createElement('li');
+      liEl.id = item.collid;
+      liEl.innerText = item.label;
+      liEl.classList.add('collection');
+      colllistEl.append(liEl);
+    })
+
+    let $styles;
+    for (let i = 0; i < document.styleSheets.length; i++) {
+      let ownerNode = document.styleSheets[i].ownerNode;
+      if (ownerNode.id == 'filter-rules') {
+        $styles = document.styleSheets[i];
+      }
+    }
+    window.$styles = $styles;
+
+    const updateFilterRules = function(collids) {
+      if ( collids === undefined ) {
+        $styles.cssRules[0].selectorText = `.collection`;
+      } else {
+        let newSelector = [];
+        collids.forEach((collid) => {
+          newSelector.push(`.collection#${collid}`);
+        })
+        $styles.cssRules[0].selectorText = newSelector.join(',');
+      }
+    }
+
+    const currentEl = document.querySelector('#current-filters');
+    currentEl.addEventListener('change', (event) => {
+      let value = event.target.value;
+      let key = event.target.name.replace('x-filter-', '');
+
+      qFilters[key] = qFilters[key].filter(v => v != value);
+      console.log("-- update current", key, value, qFilters);
+      doSearch(q.value);
+    })
+    const updateCurrentFilterOptions = function(filters) {
+      currentEl.innerHTML = '';
+      let currentKeys = Object.keys(qFilters);
+      currentKeys.forEach((key) => {
+        let dt = document.createElement('dt');
+        dt.innerHTML = key;
+        currentEl.append(dt);
+        qFilters[key].forEach((term, termIdx) => {
+          let dd = document.createElement('dd');
+          dd.innerHTML = `<input id="x-${key}-${termIdx}" type="checkbox" value="${term}" name="x-filter-${key}" checked /> <label for="x-${key}-${termIdx}">${term} <span>(${filters[key][term]})</span></label>`;
+          currentEl.append(dd);
+        })
+      })
+    }
+
+    const availableEl = document.querySelector('#available-filters');
+    availableEl.addEventListener('change', (event) => {
+      let value = event.target.value;
+      let key = event.target.name.replace('filter-', '');
+      if ( ! qFilters[key] ) { qFilters[key] = []; }
+      qFilters[key].push(value);
+      console.log("-- add filter", key, value, qFilters);
+      doSearch(q.value);
+    })
+
+    const updateFilterOptions = function(filters) {
+      console.log(filters);
+      let availableKeys = Object.keys(filters);
+      availableEl.innerHTML = '';
+      availableKeys.forEach((key) => {
+        let dt; let div;
+        Object.keys(filters[key]).forEach((term, termIdx) => {
+          if ( qFilters[key] ) {
+            // currenly selected filter
+            if ( qFilters[key] == term ) { return ; }
+            if ( qFilters[key].includes(term) ) { return ; }
+          }
+          if ( filters[key][term] > 0 ) {
+            if ( dt === undefined ) {
+              dt = document.createElement('dt');
+              dt.innerHTML = key;
+              availableEl.append(dt);
+            }
+            let dd = document.createElement('dd');
+            dd.innerHTML = `<input id="${key}-${termIdx}" type="checkbox" value="${term}" name="filter-${key}" /> <label for="${key}-${termIdx}">${term} <span>(${filters[key][term]})</span></label>`;
+            availableEl.append(dd);
+          }
+        })
+      })
+    }
+
+    const q = document.querySelector('#q');
+
+    const qFilters = {};
+    qFilters.Format = ['image'];
+    q.addEventListener('keyup', (event) => {
+      let value = q.value || null;
+      doSearch(value);
+    })
+
+    const doSearch = async function(value) {
+      console.log("-- doSearch", value, qFilters);
+      if ( ! value ) { value = null; }
+      const search = await pagefind.search(value, {
+        filters: qFilters,
+      })
+      const results = await Promise.all(search.results.map(r => r.data()));
+      updateFilterRules(results.map(r => r.meta.collid));
+      updateFilterOptions(search.filters);
+      updateCurrentFilterOptions(search.filters);
+      console.log("-- doSearch fin", value, qFilters, results.map(r => r.meta.collid));
+      console.log(search);
+    }
+
+    updateFilterRules();
+
+    window.updateFilterRules = updateFilterRules;
+    doSearch(null);
+
+  </script>
+  
+</body>
+</html>
